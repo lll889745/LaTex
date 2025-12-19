@@ -125,7 +125,18 @@ class BoundingBox:
         return overlap_width / max(min_width, 1)
 
 
-@dataclass
+# 用于生成唯一符号 ID 的计数器
+_symbol_id_counter = 0
+
+
+def _get_next_symbol_id() -> int:
+    """获取下一个唯一的符号 ID"""
+    global _symbol_id_counter
+    _symbol_id_counter += 1
+    return _symbol_id_counter
+
+
+@dataclass(eq=False)
 class Symbol:
     """符号数据类"""
     image: np.ndarray  # 符号图像
@@ -144,9 +155,22 @@ class Symbol:
     parent_id: Optional[int] = None  # 父符号 ID
     children_ids: List[int] = field(default_factory=list)  # 子符号 ID 列表
     
+    # 唯一标识符
+    _id: int = field(default_factory=_get_next_symbol_id)
+    
     @property
     def center(self) -> Tuple[float, float]:
         return self.bbox.center
+    
+    def __eq__(self, other: object) -> bool:
+        """基于唯一 ID 比较符号"""
+        if not isinstance(other, Symbol):
+            return False
+        return self._id == other._id
+    
+    def __hash__(self) -> int:
+        """基于唯一 ID 计算哈希"""
+        return hash(self._id)
 
 
 @dataclass

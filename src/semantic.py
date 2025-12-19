@@ -201,12 +201,12 @@ class FormulaValidator:
         errors.extend(operator_errors)
         
         # 除零检查
-        if self.config.check_division_by_zero and sympy_expr:
+        if self.config.check_division_by_zero and sympy_expr is not None:
             division_warnings = self._check_division_by_zero(sympy_expr)
             warnings.extend(division_warnings)
         
         # 未定义符号检查
-        if self.config.check_undefined_symbols and sympy_expr:
+        if self.config.check_undefined_symbols and sympy_expr is not None:
             undefined_warnings = self._check_undefined_symbols(sympy_expr)
             warnings.extend(undefined_warnings)
         
@@ -367,7 +367,7 @@ class SemanticProcessor:
                 result.warnings.append(f"无法解析公式: {str(e)}")
         
         # 3. 提取变量和常数
-        if result.sympy_expr:
+        if result.sympy_expr is not None:
             result.variables = self._extract_variables(result.sympy_expr)
             result.operations = self._extract_operations(result.sympy_expr)
         
@@ -377,7 +377,7 @@ class SemanticProcessor:
         result.warnings.extend(warnings)
         
         # 5. 尝试计算/化简
-        if result.sympy_expr and not result.errors:
+        if result.sympy_expr is not None and not result.errors:
             result = self._perform_computation(result)
         
         # 6. 生成解释
