@@ -18,8 +18,22 @@ from typing import Optional, Dict, Any
 import cv2
 import numpy as np
 
+
+def get_base_path():
+    """获取资源基础路径（支持PyInstaller打包）"""
+    if getattr(sys, 'frozen', False):
+        # 打包后的路径
+        return sys._MEIPASS
+    else:
+        # 开发环境路径
+        return os.path.dirname(os.path.abspath(__file__))
+
+
+# 设置基础路径
+BASE_PATH = get_base_path()
+
 # 添加 src 到路径
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, BASE_PATH)
 
 from src.preprocessing import ImagePreprocessor
 from src.segmentation import SymbolSegmenter
@@ -59,6 +73,13 @@ class FormulaRecognitionSystem:
         self.recognizer = SymbolRecognizer()
         self.structure_analyzer = StructureAnalyzer()
         self.semantic_processor = SemanticProcessor()
+        
+        # 如果没有指定模型路径，尝试使用默认路径
+        if not model_path:
+            # 首先检查内嵌的模型（打包后）
+            default_model = os.path.join(BASE_PATH, 'models', 'model_2025_12_19_19_05.pkl')
+            if os.path.exists(default_model):
+                model_path = default_model
         
         # 加载模型（如果有）
         if model_path and os.path.exists(model_path):

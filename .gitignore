@@ -8,6 +8,9 @@ Thumbs.db
 *.swp
 .idea/
 .vscode/
+/dist/
+/build/
+/src/__pycache__/
 
 # model
 /models/

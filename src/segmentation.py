@@ -199,55 +199,19 @@ class SymbolSegmenter:
         """
         检测大型运算符（求和、积分等）
         
-        大型运算符的特征：
-        - 尺寸明显大于普通符号
-        - 通常是高瘦的形状
-        - 具有特殊的密度分布
+        注意：此检测已禁用，改为依靠分类器识别。
+        因为对于小尺寸训练图像，形状特征无法可靠区分数字1和求和符号等。
         
         Args:
             comp: 连通域信息
             binary: 二值图像
             
         Returns:
-            是否为大型运算符
+            是否为大型运算符（始终返回False）
         """
-        bbox = comp['bbox']
-        img_height = binary.shape[0]
-        
-        # 大型运算符必须占据图像高度的大部分（>60%）
-        if bbox.height < img_height * 0.6:
-            return False
-        
-        # 大型运算符通常比较大
-        if bbox.area < 200:
-            return False
-        
-        # 求和/积分符号通常比较高瘦（高度 > 宽度 * 1.2）
-        if bbox.height < bbox.width * 1.2:
-            return False
-        
-        # 检查是否具有典型的求和/积分形状
-        region = binary[bbox.y:bbox.y2, bbox.x:bbox.x2]
-        h, w = region.shape
-        
-        # 计算上、中、下三部分的密度
-        h_third = max(1, h // 3)
-        top = region[:h_third, :]
-        middle = region[h_third:2*h_third, :]
-        bottom = region[2*h_third:, :]
-        
-        top_density = np.sum(top > 0) / (top.size + 1)
-        mid_density = np.sum(middle > 0) / (middle.size + 1)
-        bottom_density = np.sum(bottom > 0) / (bottom.size + 1)
-        
-        # 求和符号：上下密度较高，中间较低
-        if top_density > 0.3 and bottom_density > 0.3 and mid_density < 0.25:
-            return True
-        
-        # 积分符号：S 形状，中间密度高，宽高比<0.5
-        if mid_density > 0.2 and bbox.aspect_ratio < 0.5:
-            return True
-        
+        # 禁用基于形状的大型运算符检测
+        # 原因：对于小图像，普通符号也会占据60%以上的高度
+        # 改为完全依靠分类器来识别求和、积分等符号
         return False
     
     def _merge_components(self, components: List[Dict], 

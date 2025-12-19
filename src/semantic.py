@@ -50,6 +50,9 @@ class FormulaType(Enum):
     SUM = "sum"                     # 求和
     PRODUCT = "product"             # 连乘
     MATRIX = "matrix"               # 矩阵
+    SET_EXPRESSION = "set_expression"  # 集合表达式
+    LOGIC_EXPRESSION = "logic_expression"  # 逻辑表达式
+    NUMBER_SET = "number_set"       # 数集符号
     UNKNOWN = "unknown"             # 未知
 
 
@@ -93,7 +96,8 @@ class FormulaTypeClassifier:
     
     # 特征关键词
     EQUATION_SIGNS = ['=']
-    INEQUALITY_SIGNS = ['<', '>', r'\leq', r'\geq', r'\neq', r'\le', r'\ge']
+    INEQUALITY_SIGNS = ['<', '>', r'\leq', r'\geq', r'\neq', r'\le', r'\ge', 
+                        r'\leqslant', r'\geqslant', r'\lesssim', r'\gtrsim']
     DERIVATIVE_PATTERNS = [r"\\frac\{d", r"\\frac\{\\partial", r"'", r"''", r"'''"]
     INTEGRAL_PATTERNS = [r'\\int', r'\\iint', r'\\iiint', r'\\oint']
     LIMIT_PATTERNS = [r'\\lim']
@@ -101,6 +105,19 @@ class FormulaTypeClassifier:
     PRODUCT_PATTERNS = [r'\\prod']
     MATRIX_PATTERNS = [r'\\begin\{matrix\}', r'\\begin\{pmatrix\}', 
                        r'\\begin\{bmatrix\}', r'\\begin\{vmatrix\}']
+    
+    # 集合运算符 - 使用非原始字符串，\\表示单个反斜杠
+    SET_OPERATORS = ['\\cap', '\\cup', '\\in', '\\notin', '\\subset', '\\supset',
+                     '\\subseteq', '\\supseteq', '\\setminus', '\\emptyset',
+                     '\\bigcup', '\\bigcap']
+    
+    # 逻辑运算符
+    LOGIC_OPERATORS = ['\\forall', '\\exists', '\\neg', '\\land', '\\lor',
+                       '\\implies', '\\iff', '\\wedge', '\\vee', '\\lnot']
+    
+    # 数集符号
+    NUMBER_SETS = ['\\mathbb{N}', '\\mathbb{Z}', '\\mathbb{Q}', 
+                   '\\mathbb{R}', '\\mathbb{C}', '\\mathbb{H}']
     
     def classify(self, latex: str, syntax_tree: Optional[SyntaxNode] = None) -> FormulaType:
         """
@@ -142,6 +159,21 @@ class FormulaTypeClassifier:
         for pattern in self.PRODUCT_PATTERNS:
             if pattern in latex:
                 return FormulaType.PRODUCT
+        
+        # 检查集合表达式
+        for pattern in self.SET_OPERATORS:
+            if pattern in latex:
+                return FormulaType.SET_EXPRESSION
+        
+        # 检查逻辑表达式
+        for pattern in self.LOGIC_OPERATORS:
+            if pattern in latex:
+                return FormulaType.LOGIC_EXPRESSION
+        
+        # 检查数集符号
+        for pattern in self.NUMBER_SETS:
+            if pattern in latex:
+                return FormulaType.NUMBER_SET
         
         # 检查函数定义 f(x) = ...
         if re.search(r'[a-zA-Z]\s*\([^)]+\)\s*=', latex):
@@ -359,26 +391,31 @@ class SemanticProcessor:
         # 1. 分类公式类型
         result.formula_type = self.classifier.classify(latex, syntax_tree)
         
-        # 2. 解析为 SymPy 表达式
-        if SYMPY_AVAILABLE:
-            try:
-                result.sympy_expr = self.latex_to_sympy(latex)
-            except Exception as e:
-                result.warnings.append(f"无法解析公式: {str(e)}")
-        
-        # 3. 提取变量和常数
-        if result.sympy_expr is not None:
-            result.variables = self._extract_variables(result.sympy_expr)
-            result.operations = self._extract_operations(result.sympy_expr)
-        
-        # 4. 验证公式
-        errors, warnings = self.validator.validate(latex, result.sympy_expr)
-        result.errors.extend(errors)
-        result.warnings.extend(warnings)
-        
-        # 5. 尝试计算/化简
-        if result.sympy_expr is not None and not result.errors:
-            result = self._perform_computation(result)
+        # 2. 对于集合/逻辑表达式，使用专门的分析方法
+        if result.formula_type in (FormulaType.SET_EXPRESSION, FormulaType.LOGIC_EXPRESSION, 
+                                    FormulaType.NUMBER_SET):
+            result = self._analyze_special_expression(result, latex)
+        else:
+            # 解析为 SymPy 表达式
+            if SYMPY_AVAILABLE:
+                try:
+                    result.sympy_expr = self.latex_to_sympy(latex)
+                except Exception as e:
+                    result.warnings.append(f"无法解析公式: {str(e)}")
+            
+            # 3. 提取变量和常数
+            if result.sympy_expr is not None:
+                result.variables = self._extract_variables(result.sympy_expr)
+                result.operations = self._extract_operations(result.sympy_expr)
+            
+            # 4. 验证公式
+            errors, warnings = self.validator.validate(latex, result.sympy_expr)
+            result.errors.extend(errors)
+            result.warnings.extend(warnings)
+            
+            # 5. 尝试计算/化简
+            if result.sympy_expr is not None and not result.errors:
+                result = self._perform_computation(result)
         
         # 6. 生成解释
         result.interpretation = self._generate_interpretation(result)
@@ -521,6 +558,111 @@ class SemanticProcessor:
             pass
         
         return list(operations)
+    
+    def _analyze_special_expression(self, result: SemanticResult, latex: str) -> SemanticResult:
+        """
+        分析集合/逻辑/数集表达式
+        
+        Args:
+            result: 语义结果对象
+            latex: LaTeX代码
+            
+        Returns:
+            更新后的结果
+        """
+        # 集合运算符映射
+        set_ops = {
+            r'\cap': ('intersection', '∩', '交集'),
+            r'\cup': ('union', '∪', '并集'),
+            r'\in': ('set_membership', '∈', '属于'),
+            r'\notin': ('set_membership', '∉', '不属于'),
+            r'\subset': ('subset', '⊂', '真子集'),
+            r'\supset': ('subset', '⊃', '真超集'),
+            r'\subseteq': ('subset', '⊆', '子集'),
+            r'\supseteq': ('subset', '⊇', '超集'),
+            r'\setminus': ('set_difference', '∖', '集合差'),
+            r'\emptyset': ('empty_set', '∅', '空集'),
+            r'\bigcup': ('union', '⋃', '大并集'),
+            r'\bigcap': ('intersection', '⋂', '大交集'),
+        }
+        
+        # 逻辑运算符映射
+        logic_ops = {
+            r'\forall': ('universal_quantifier', '∀', '任意/对于所有'),
+            r'\exists': ('existential_quantifier', '∃', '存在'),
+            r'\neg': ('logical_not', '¬', '非'),
+            r'\lnot': ('logical_not', '¬', '非'),
+            r'\land': ('logical_and', '∧', '与'),
+            r'\lor': ('logical_or', '∨', '或'),
+            r'\wedge': ('logical_and', '∧', '与'),
+            r'\vee': ('logical_or', '∨', '或'),
+            r'\implies': ('implication', '⟹', '蕴含'),
+            r'\iff': ('equivalence', '⟺', '当且仅当'),
+        }
+        
+        # 数集符号映射
+        number_sets = {
+            r'\mathbb{N}': '自然数集 ℕ',
+            r'\mathbb{Z}': '整数集 ℤ',
+            r'\mathbb{Q}': '有理数集 ℚ',
+            r'\mathbb{R}': '实数集 ℝ',
+            r'\mathbb{C}': '复数集 ℂ',
+            r'\mathbb{H}': '四元数集 ℍ',
+        }
+        
+        operations = []
+        found_ops = []
+        
+        # 检测集合运算
+        for op, (op_name, symbol, desc) in set_ops.items():
+            if op in latex:
+                operations.append(op_name)
+                found_ops.append(desc)
+        
+        # 检测逻辑运算
+        for op, (op_name, symbol, desc) in logic_ops.items():
+            if op in latex:
+                operations.append(op_name)
+                found_ops.append(desc)
+        
+        result.operations = operations
+        
+        # 提取变量（排除运算符）
+        variables = []
+        # 移除LaTeX命令，只保留变量
+        clean_latex = re.sub(r'\\[a-zA-Z]+(\{[^}]*\})?', ' ', latex)
+        # 提取单个字母变量
+        for match in re.findall(r'\b([A-Za-z])\b', clean_latex):
+            if match not in variables:
+                variables.append(match)
+        result.variables = variables
+        
+        # 检测数集符号
+        detected_sets = []
+        for set_sym, set_name in number_sets.items():
+            if set_sym in latex:
+                detected_sets.append(set_name)
+        
+        # 构建解释
+        if result.formula_type == FormulaType.NUMBER_SET:
+            if detected_sets:
+                result.simplified = ', '.join(detected_sets)
+        elif result.formula_type == FormulaType.SET_EXPRESSION:
+            if found_ops:
+                result.solution = {
+                    'type': '集合运算',
+                    'operations': found_ops,
+                    'elements': variables
+                }
+        elif result.formula_type == FormulaType.LOGIC_EXPRESSION:
+            if found_ops:
+                result.solution = {
+                    'type': '逻辑表达式',
+                    'quantifiers_or_connectives': found_ops,
+                    'variables': variables
+                }
+        
+        return result
     
     def _perform_computation(self, result: SemanticResult) -> SemanticResult:
         """
@@ -714,12 +856,15 @@ class SemanticProcessor:
             FormulaType.SUM: "这是一个求和表达式",
             FormulaType.PRODUCT: "这是一个连乘表达式",
             FormulaType.MATRIX: "这是一个矩阵",
+            FormulaType.SET_EXPRESSION: "这是一个集合表达式",
+            FormulaType.LOGIC_EXPRESSION: "这是一个逻辑表达式",
+            FormulaType.NUMBER_SET: "这是一个数集符号",
             FormulaType.UNKNOWN: "无法确定公式类型",
         }
         
-        base_interp = interpretations.get(formula_type, "")
+        base_interp = interpretations.get(formula_type, "这是一个数学表达式")
         
-        # 添加变量信息
+        # 添加变量信息（排除运算符）
         if result.variables:
             var_str = ", ".join(result.variables)
             base_interp += f"，包含变量: {var_str}"
@@ -740,6 +885,19 @@ class SemanticProcessor:
                 'differentiation': '求导',
                 'limit': '极限',
                 'summation': '求和',
+                # 集合运算
+                'intersection': '交集',
+                'union': '并集',
+                'set_membership': '集合隶属',
+                'set_difference': '集合差',
+                'subset': '子集关系',
+                # 逻辑运算
+                'universal_quantifier': '全称量词',
+                'existential_quantifier': '存在量词',
+                'logical_and': '逻辑与',
+                'logical_or': '逻辑或',
+                'logical_not': '逻辑非',
+                'implication': '蕴含',
             }
             ops = [op_names.get(op, op) for op in result.operations[:3]]
             base_interp += f"，涉及 {', '.join(ops)} 运算"

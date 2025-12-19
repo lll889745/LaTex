@@ -107,19 +107,17 @@ class FeatureExtractor:
         """
         target_size = self.config.symbol_size
         
-        # 首先填充到目标大小
-        padded = pad_image(image, target_size, pad_value=0)
+        # 先检测原始图像的格式：通过整体像素分布判断
+        # 训练数据是白底黑字，均值应该较高（>127）
+        # 预处理输出是黑底白字，均值应该较低（<127）
+        img_mean = np.mean(image)
         
-        # 检测当前图像格式：通过边界像素判断背景色
-        border_pixels = np.concatenate([
-            padded[0, :], padded[-1, :],
-            padded[:, 0], padded[:, -1]
-        ])
-        border_mean = np.mean(border_pixels)
+        # 如果均值较低（<127），说明是黑底白字，需要反转为白底黑字
+        if img_mean < 127:
+            image = 255 - image
         
-        # 如果边界是黑色（<127），说明是黑底白字，需要反转
-        if border_mean < 127:
-            padded = 255 - padded
+        # 反转后填充使用白色（背景色）
+        padded = pad_image(image, target_size, pad_value=255)
         
         return padded
     
