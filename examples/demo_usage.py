@@ -30,7 +30,7 @@ def example_preprocessing():
     print("示例 1: 图像预处理")
     print("=" * 50)
     
-    # 创建模拟的手写图像（实际使用时加载真实图像）
+    # 创建模拟的手写图像
     image = np.ones((200, 400), dtype=np.uint8) * 200  # 灰色背景
     
     # 添加一些"手写"内容
@@ -91,10 +91,10 @@ def example_segmentation():
     cv2.rectangle(binary, (60, 30), (85, 70), 255, -1)   # 第二个符号
     cv2.circle(binary, (120, 50), 20, 255, -1)            # 第三个符号（圆形）
     
-    # 添加一个上标（小的）
+    # 添加一个上标
     cv2.rectangle(binary, (90, 20), (105, 35), 255, -1)
     
-    # 添加模拟的 "i" 符号（有点的）
+    # 添加模拟的 "i" 符号
     cv2.rectangle(binary, (180, 35), (190, 70), 255, -1)  # 主体
     cv2.circle(binary, (185, 25), 5, 255, -1)              # 点
     
@@ -365,7 +365,7 @@ def example_complete_pipeline():
     symbols = segmenter.segment(binary)
     print(f"检测到 {len(symbols)} 个符号")
     
-    # 4. 符号识别（这里使用占位标签，实际需要训练模型）
+    # 4. 符号识别
     print("\n步骤 4: 符号识别")
     # 由于没有训练模型，手动设置标签
     expected_labels = ['x', '+', '2', '=', '5']

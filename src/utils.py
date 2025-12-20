@@ -97,7 +97,7 @@ class BoundingBox:
         return BoundingBox(x1, y1, x2 - x1, y2 - y1)
     
     def iou(self, other: 'BoundingBox') -> float:
-        """计算 IoU（交并比）"""
+        """计算 IoU"""
         intersection = self.intersection(other)
         if intersection is None:
             return 0.0
@@ -432,7 +432,7 @@ def visualize_symbols(img: np.ndarray, symbols: List[Symbol],
 
 def visualize_syntax_tree(root: SyntaxNode, depth: int = 0) -> str:
     """
-    可视化语法树（文本形式）
+    可视化语法树
     
     Args:
         root: 根节点

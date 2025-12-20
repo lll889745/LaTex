@@ -20,7 +20,7 @@ import numpy as np
 
 
 def get_base_path():
-    """获取资源基础路径（支持PyInstaller打包）"""
+    """获取资源基础路径"""
     if getattr(sys, 'frozen', False):
         # 打包后的路径
         return sys._MEIPASS
@@ -63,7 +63,7 @@ class FormulaRecognitionSystem:
         初始化识别系统
         
         Args:
-            model_path: 预训练模型路径（可选）
+            model_path: 预训练模型路径
         """
         logger.info("初始化公式识别系统...")
         
@@ -117,7 +117,7 @@ class FormulaRecognitionSystem:
             else:
                 h, w = image.shape
             
-            # 对于小图像（如单个符号的32x32或64x64），直接识别整张图片
+            # 对于小图像，直接识别整张图片
             is_single_symbol = max(h, w) <= 64
             
             # 步骤1：图像预处理
@@ -129,7 +129,7 @@ class FormulaRecognitionSystem:
             else:
                 binary = self.preprocessor.process(image)
             
-            # 步骤2：符号分割（小图像跳过分割，直接作为单个符号）
+            # 步骤2：符号分割
             logger.info("步骤2: 符号分割")
             if is_single_symbol:
                 # 小图像：整张图片作为一个符号
@@ -197,7 +197,7 @@ class FormulaRecognitionSystem:
         
         Args:
             image_path: 图像文件路径
-            output_path: 输出可视化结果的路径（可选）
+            output_path: 输出可视化结果的路径
             
         Returns:
             识别结果字典
@@ -251,7 +251,7 @@ def create_demo_image() -> np.ndarray:
     # 创建白色背景
     img = np.ones((200, 600), dtype=np.uint8) * 255
     
-    # 添加简单的文字（模拟手写）
+    # 添加简单的文字
     font = cv2.FONT_HERSHEY_SIMPLEX
     
     # 绘制 "x^2 + y = 5"

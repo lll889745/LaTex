@@ -4,7 +4,7 @@
 
 实现以下功能：
 - 公式类型识别
-- 符号计算（使用 SymPy）
+- 符号计算
 - 错误检测
 - 公式化简和求解
 """
@@ -333,7 +333,7 @@ class FormulaValidator:
             # 获取所有自由符号
             free_symbols = expr.free_symbols
             
-            # 常见的数学符号（不需要警告）
+            # 常见的数学符号
             common_symbols = {'x', 'y', 'z', 'a', 'b', 'c', 't', 'n', 'm', 
                             'i', 'j', 'k', 'r', 's', 'theta', 'phi', 'alpha',
                             'beta', 'gamma', 'delta', 'epsilon', 'lambda'}
@@ -341,7 +341,7 @@ class FormulaValidator:
             for sym in free_symbols:
                 if str(sym).lower() not in common_symbols:
                     # 不是常见符号，给出提示
-                    pass  # 暂不警告，因为可能是用户定义的变量
+                    pass
         
         except Exception as e:
             logger.debug(f"符号检查出错: {e}")
@@ -627,7 +627,7 @@ class SemanticProcessor:
         
         result.operations = operations
         
-        # 提取变量（排除运算符）
+        # 提取变量
         variables = []
         # 移除LaTeX命令，只保留变量
         clean_latex = re.sub(r'\\[a-zA-Z]+(\{[^}]*\})?', ' ', latex)

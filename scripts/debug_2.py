@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-# 可视化训练数据"A"
+# 可视化训练数据A
 train = cv2.imread('data/test/debug_A_training.png', 0)
 print('Training A (32x32):')
 for r in range(32):

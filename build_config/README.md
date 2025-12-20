@@ -6,7 +6,7 @@
 
 | 文件 | 用途 |
 |------|------|
-| `build_gui.spec` | GUI 应用打包配置（推荐） |
+| `build_gui.spec` | GUI 应用打包配置 |
 | `build_exe.spec` | 命令行版本打包配置 |
 
 ## 打包命令

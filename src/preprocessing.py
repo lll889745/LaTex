@@ -6,7 +6,7 @@
 - 自适应二值化（Sauvola 方法）
 - 图像去噪
 - 倾斜校正
-- 笔画细化（骨架提取）
+- 骨架提取
 """
 
 import cv2
@@ -43,7 +43,7 @@ class ImagePreprocessor:
         完整的预处理流程
         
         Args:
-            image: 输入图像（灰度或彩色）
+            image: 输入图像
             return_intermediate: 是否返回中间结果
             
         Returns:
@@ -63,7 +63,7 @@ class ImagePreprocessor:
         if min_dim <= 64:
             # 小图像使用Otsu或简单阈值
             binary = self.otsu_binarization(gray)
-            logger.info("完成Otsu二值化（小图像）")
+            logger.info("完成Otsu二值化")
         else:
             # 大图像使用自适应二值化
             binary = self.sauvola_binarization(gray)
@@ -106,8 +106,8 @@ class ImagePreprocessor:
         其中：
         - μ(x,y): 局部窗口的均值
         - σ(x,y): 局部窗口的标准差
-        - k: 控制阈值的参数（通常 0.2-0.5）
-        - R: 标准差的动态范围（通常 128）
+        - k: 控制阈值的参数
+        - R: 标准差的动态范围
         
         Args:
             gray: 灰度图像
@@ -163,7 +163,7 @@ class ImagePreprocessor:
         
         Args:
             gray: 灰度图像
-            k: Niblack 参数（通常为负值）
+            k: Niblack 参数
             
         Returns:
             二值图像
@@ -431,7 +431,7 @@ class ImagePreprocessor:
     
     def extract_skeleton(self, binary: np.ndarray) -> np.ndarray:
         """
-        提取骨架（细化）
+        提取骨架
         
         使用 Zhang-Suen 细化算法提取单像素宽度的骨架。
         
@@ -441,7 +441,7 @@ class ImagePreprocessor:
         Returns:
             骨架图像
         """
-        # 使用 skimage 的骨架化（如果可用）或自实现
+        # 使用 skimage 的骨架化
         try:
             from skimage.morphology import skeletonize
             # 转换为布尔数组
@@ -553,7 +553,7 @@ class ImagePreprocessor:
         Returns:
             标准化后的图像
         """
-        # 估计当前笔画宽度（使用距离变换）
+        # 估计当前笔画宽度
         dist = cv2.distanceTransform(binary, cv2.DIST_L2, 5)
         current_width = np.median(dist[dist > 0]) * 2 if np.any(dist > 0) else target_width
         

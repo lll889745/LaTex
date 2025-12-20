@@ -25,7 +25,7 @@ def load_data(data_dir):
         
     logger.info(f"正在从 {data_dir} 加载数据...")
     
-    # 遍历所有子目录（类别）
+    # 遍历所有子目录
     categories = [d for d in os.listdir(data_dir) if os.path.isdir(os.path.join(data_dir, d))]
     
     total_files = 0
@@ -36,7 +36,7 @@ def load_data(data_dir):
         for filename in files:
             filepath = os.path.join(category_dir, filename)
             
-            # 读取图像（灰度模式）
+            # 读取图像
             img = cv2.imread(filepath, cv2.IMREAD_GRAYSCALE)
             
             if img is not None:
@@ -75,7 +75,7 @@ def main():
     recognizer = SymbolRecognizer()
     
     # 3. 训练模型
-    # 使用 SVM 分类器，也可以尝试 'rf' (随机森林) 或 'knn'
+    # 使用 SVM 分类器
     logger.info("开始训练模型...")
     try:
         report = recognizer.train(images, labels, classifier_type='svm')

@@ -23,7 +23,7 @@ matplotlib.use('Agg')  # 使用非交互式后端
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
-# 设置基础路径（支持PyInstaller打包）
+# 设置基础路径
 def get_base_path():
     if getattr(sys, 'frozen', False):
         return sys._MEIPASS
@@ -53,7 +53,7 @@ class FormulaRecognizerGUI:
         self.root.geometry("900x700")
         self.root.minsize(800, 600)
         
-        # 设置图标（如果存在）
+        # 设置图标
         icon_path = os.path.join(BASE_PATH, 'icon.ico')
         if os.path.exists(icon_path):
             self.root.iconbitmap(icon_path)
@@ -168,7 +168,7 @@ class FormulaRecognizerGUI:
         self.latex_text.pack(fill=tk.X)
         self.latex_text.config(state=tk.DISABLED)
         
-        # 公式预览（使用 matplotlib 渲染 LaTeX）
+        # 公式预览
         preview_frame = ttk.LabelFrame(right_frame, text="公式预览", padding="5")
         preview_frame.pack(fill=tk.X, pady=5)
         
@@ -213,9 +213,9 @@ class FormulaRecognizerGUI:
     def _setup_drag_drop(self):
         """设置拖放功能"""
         try:
-            # 尝试使用tkinterdnd2（如果安装了）
+            # 尝试使用tkinterdnd2
             try:
-                from tkinterdnd2 import DND_FILES, TkinterDnD
+                from tkinterdnd2 import DND_FILES, TkinterDnD  # type: ignore
                 # 如果根窗口支持DnD
                 if hasattr(self.root, 'drop_target_register'):
                     self.canvas.drop_target_register(DND_FILES)
@@ -565,7 +565,6 @@ class FormulaRecognizerGUI:
             return
         
         try:
-            # 预处理 LaTeX 以兼容 matplotlib
             # matplotlib 不支持某些 LaTeX 命令，需要转换
             display_latex = latex
             
@@ -723,7 +722,7 @@ def main():
     """主函数"""
     root = tk.Tk()
     
-    # 设置DPI感知（Windows）
+    # 设置DPI感知
     try:
         from ctypes import windll
         windll.shcore.SetProcessDpiAwareness(1)

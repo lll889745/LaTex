@@ -849,7 +849,7 @@ def create_recognizer(model_path: Optional[str] = None,
     创建符号识别器
     
     Args:
-        model_path: 预训练模型路径（可选）
+        model_path: 预训练模型路径
         config: 识别配置
         
     Returns:
