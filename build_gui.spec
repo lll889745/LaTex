@@ -18,6 +18,8 @@ a = Analysis(
     datas=[
         # 包含模型文件
         ('models/model_2025_12_19_19_05.pkl', 'models'),
+        # 包含源代码模块
+        ('src', 'src'),
     ],
     hiddenimports=[
         'sklearn',
@@ -41,6 +43,11 @@ a = Analysis(
         'PIL',
         'PIL.Image',
         'PIL.ImageTk',
+        # matplotlib 相关
+        'matplotlib',
+        'matplotlib.pyplot',
+        'matplotlib.backends.backend_agg',
+        'matplotlib.figure',
     ],
     hookspath=[],
     hooksconfig={},
