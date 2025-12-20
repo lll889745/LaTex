@@ -122,24 +122,93 @@ class SymbolSegmenter:
         """
         img_height, img_width = binary.shape
         
+        # 计算所有组件的平均高度，用于参考
+        heights = [c['bbox'].height for c in components]
+        avg_height = np.mean(heights) if components else img_height * 0.3
+        max_height = max(heights) if heights else img_height * 0.3
+        
         for comp in components:
             bbox = comp['bbox']
             aspect_ratio = bbox.aspect_ratio
             height_ratio = bbox.height / img_height
+            width_ratio = bbox.width / img_width
             
-            # 检测分数线：宽高比大，高度小
+            # 分数线的关键特征：
+            # 1. 宽高比非常大（宽度远大于高度）
+            # 2. 高度非常小（相对于图像或其他符号）
+            # 3. 必须是细线形状
+            
+            is_fraction_line = False
+            
+            # 分数线的绝对高度限制：不应超过8像素或图像高度的8%
+            max_line_height = min(8, img_height * 0.08)
+            
+            # 条件1：传统分数线 - 宽高比极大，高度极小
             if (aspect_ratio > self.config.fraction_line_aspect_ratio and
+                bbox.height <= max_line_height and
                 height_ratio < self.config.fraction_line_height_ratio):
-                comp['is_fraction_line'] = True
-                logger.debug(f"检测到分数线: {bbox.to_tuple()}")
-            else:
-                comp['is_fraction_line'] = False
+                is_fraction_line = True
+            
+            # 条件2：稍宽松的分数线检测，但需要上下有符号确认
+            elif (aspect_ratio > 4.0 and  # 宽度至少是高度的4倍
+                  bbox.height <= max_line_height * 1.5 and  # 高度稍微放宽
+                  bbox.height < avg_height * 0.3 and  # 高度远小于平均高度
+                  self._has_symbols_above_and_below(comp, components)):
+                is_fraction_line = True
+            
+            comp['is_fraction_line'] = is_fraction_line
+            if is_fraction_line:
+                logger.debug(f"检测到分数线: {bbox.to_tuple()}, aspect_ratio={aspect_ratio:.2f}, height={bbox.height}")
             
             # 检测根号符号
             comp['is_sqrt'] = self._detect_sqrt_symbol(comp, binary)
             
             # 检测求和/积分符号
             comp['is_large_operator'] = self._detect_large_operator(comp, binary)
+        
+        return components
+    
+    def _has_symbols_above_and_below(self, target_comp: Dict, 
+                                      all_components: List[Dict]) -> bool:
+        """
+        检查目标组件上下方是否都有其他符号
+        
+        用于辅助判断一个短横线是否是分数线
+        
+        Args:
+            target_comp: 目标组件（可能是分数线）
+            all_components: 所有组件列表
+            
+        Returns:
+            上下方是否都有符号
+        """
+        target_bbox = target_comp['bbox']
+        has_above = False
+        has_below = False
+        
+        for comp in all_components:
+            if comp['id'] == target_comp['id']:
+                continue
+            
+            other_bbox = comp['bbox']
+            
+            # 检查水平方向是否有重叠
+            h_overlap = target_bbox.horizontal_overlap_ratio(other_bbox)
+            if h_overlap < 0.2:
+                continue
+            
+            # 检查是否在上方
+            if other_bbox.center_y < target_bbox.y:
+                has_above = True
+            
+            # 检查是否在下方
+            if other_bbox.center_y > target_bbox.y2:
+                has_below = True
+            
+            if has_above and has_below:
+                return True
+        
+        return has_above and has_below
         
         return components
     
@@ -266,6 +335,17 @@ class SymbolSegmenter:
                 bbox_i = components[i]['bbox']
                 bbox_j = components[j]['bbox']
                 
+                # 检查是否有一个组件可能是分数线
+                # 分数线不应与其他组件合并
+                is_potential_fraction_line_i = (bbox_i.aspect_ratio > 4.0 and 
+                                                 bbox_i.height <= 8)
+                is_potential_fraction_line_j = (bbox_j.aspect_ratio > 4.0 and 
+                                                 bbox_j.height <= 8)
+                
+                if is_potential_fraction_line_i or is_potential_fraction_line_j:
+                    # 不合并可能是分数线的组件
+                    continue
+                
                 should_merge = False
                 
                 # 条件1：小点在大组件上方（i, j 的点）
@@ -287,7 +367,7 @@ class SymbolSegmenter:
                     should_merge = True
                 
                 # 条件5：对于小图片，只合并明显属于同一符号的断开笔画
-                # 条件：水平有重叠 + 尺寸相似（都是小笔画片段）
+                # 条件：水平有重叠 + 尺寸相似（都是小笔画片段）+ 垂直距离非常近
                 if is_small_image and not should_merge:
                     # 检查水平方向是否有重叠
                     h_overlap = bbox_i.horizontal_overlap_ratio(bbox_j)
@@ -295,8 +375,12 @@ class SymbolSegmenter:
                     # 检查尺寸是否相似（同一符号的断开笔画尺寸应该接近）
                     area_ratio = min(bbox_i.area, bbox_j.area) / max(bbox_i.area, bbox_j.area)
                     
-                    # 只有当水平有重叠，且尺寸相差不超过5倍时才合并
-                    if h_overlap > 0.3 and area_ratio > 0.2:
+                    # 检查垂直距离是否很近
+                    v_gap = max(0, max(bbox_i.y, bbox_j.y) - min(bbox_i.y2, bbox_j.y2))
+                    v_gap_ratio = v_gap / max(min(bbox_i.height, bbox_j.height), 1)
+                    
+                    # 只有当水平有重叠，尺寸相差不超过5倍，且垂直距离很近时才合并
+                    if h_overlap > 0.5 and area_ratio > 0.3 and v_gap_ratio < 0.3:
                         should_merge = True
                 
                 if should_merge:

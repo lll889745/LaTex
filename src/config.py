@@ -81,13 +81,17 @@ class StructureConfig:
     """结构分析配置"""
     
     # 空间关系判定阈值
-    superscript_y_threshold: float = 0.3  # 上标 y 偏移阈值
-    subscript_y_threshold: float = 0.3  # 下标 y 偏移阈值
-    script_size_ratio: float = 0.6  # 上下标尺寸比例阈值
-    vertical_overlap_threshold: float = 0.5  # 垂直重叠阈值
+    superscript_y_threshold: float = 0.15  # 上标 y 偏移阈值（降低以更容易检测上标）
+    subscript_y_threshold: float = 0.15  # 下标 y 偏移阈值（降低以更容易检测下标）
+    script_size_ratio: float = 0.85  # 上下标尺寸比例阈值（提高以允许更大的上下标）
+    vertical_overlap_threshold: float = 0.3  # 垂直重叠阈值（降低以更宽松）
+    
+    # 上下标水平距离限制
+    script_max_horizontal_distance: float = 2.5  # 上下标最大水平距离（相对于基础符号宽度）
     
     # 分数识别
-    fraction_gap_threshold: float = 0.2  # 分数上下间距阈值
+    fraction_gap_threshold: float = 0.3  # 分数上下间距阈值（提高以更容易识别分数）
+    fraction_line_vertical_tolerance: float = 2.0  # 分数线垂直关联容差
     
     # 根号识别
     sqrt_coverage_threshold: float = 0.8  # 根号覆盖范围阈值

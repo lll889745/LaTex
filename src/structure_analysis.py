@@ -149,7 +149,10 @@ class StructureAnalyzer:
         # 计算尺寸比例
         size_a = max(bbox_a.width, bbox_a.height)
         size_b = max(bbox_b.width, bbox_b.height)
+        height_a = bbox_a.height
+        height_b = bbox_b.height
         size_ratio = size_b / max(size_a, 1)
+        height_ratio = height_b / max(height_a, 1)
         
         # 计算重叠
         v_overlap = bbox_a.vertical_overlap_ratio(bbox_b)
@@ -157,43 +160,208 @@ class StructureAnalyzer:
         
         # 归一化距离
         norm_dx = dx / max(size_a, 1)
-        norm_dy = dy / max(size_a, 1)
+        norm_dy = dy / max(height_a, 1)
         
-        # 分数线处理
+        # 计算水平距离（从基础符号右边缘到目标符号左边缘）
+        h_gap = bbox_b.x - bbox_a.x2
+        norm_h_gap = h_gap / max(bbox_a.width, 1)
+        
+        # 获取最大水平距离限制
+        max_h_distance = getattr(self.config, 'script_max_horizontal_distance', 2.5)
+        
+        # 分数线处理 - 优化：检查水平覆盖
         if symbol_a.is_fraction_line:
-            if dy < 0 and abs(norm_dy) < 1.5:
-                return SpatialRelation.NUMERATOR
-            elif dy > 0 and abs(norm_dy) < 1.5:
-                return SpatialRelation.DENOMINATOR
+            # 检查符号是否在分数线的水平范围内
+            h_coverage = self._compute_horizontal_coverage(bbox_a, bbox_b)
+            
+            # 使用绝对距离而不是归一化距离（因为分数线高度很小）
+            abs_dy = abs(dy)
+            # 分子/分母与分数线的距离应该在合理范围内（基于目标符号的高度）
+            max_distance = max(bbox_b.height * 2, 50)  # 最大距离为目标符号高度的2倍或50像素
+            
+            if h_coverage > 0.2:  # 至少20%水平覆盖
+                if dy < 0 and abs_dy < max_distance:
+                    return SpatialRelation.NUMERATOR
+                elif dy > 0 and abs_dy < max_distance:
+                    return SpatialRelation.DENOMINATOR
         
-        # 上标判定
-        if (norm_dx > 0 and norm_dy < -self.config.superscript_y_threshold and
-            size_ratio < self.config.script_size_ratio and
-            bbox_b.y2 < bbox_a.center_y):
+        # 上标判定 - 优化后的逻辑
+        is_superscript = self._check_superscript(
+            bbox_a, bbox_b, dx, dy, norm_dx, norm_dy, 
+            size_ratio, height_ratio, norm_h_gap, max_h_distance
+        )
+        if is_superscript:
             return SpatialRelation.SUPERSCRIPT
         
-        # 下标判定
-        if (norm_dx > 0 and norm_dy > self.config.subscript_y_threshold and
-            size_ratio < self.config.script_size_ratio and
-            bbox_b.y > bbox_a.center_y):
+        # 下标判定 - 优化后的逻辑
+        is_subscript = self._check_subscript(
+            bbox_a, bbox_b, dx, dy, norm_dx, norm_dy,
+            size_ratio, height_ratio, norm_h_gap, max_h_distance
+        )
+        if is_subscript:
             return SpatialRelation.SUBSCRIPT
         
         # 右邻判定
-        if (norm_dx > 0.3 and
-            v_overlap > self.config.vertical_overlap_threshold):
+        if (norm_dx > 0.3 and v_overlap > self.config.vertical_overlap_threshold):
             return SpatialRelation.RIGHT
         
         # 正上方
-        if (abs(norm_dx) < 0.5 and norm_dy < -0.5 and
-            h_overlap > 0.3):
+        if (abs(norm_dx) < 0.5 and norm_dy < -0.5 and h_overlap > 0.3):
             return SpatialRelation.ABOVE
         
         # 正下方
-        if (abs(norm_dx) < 0.5 and norm_dy > 0.5 and
-            h_overlap > 0.3):
+        if (abs(norm_dx) < 0.5 and norm_dy > 0.5 and h_overlap > 0.3):
             return SpatialRelation.BELOW
         
         return SpatialRelation.UNKNOWN
+    
+    def _compute_horizontal_coverage(self, bbox_a: BoundingBox, bbox_b: BoundingBox) -> float:
+        """
+        计算 bbox_b 在 bbox_a 水平范围内的覆盖率
+        
+        Args:
+            bbox_a: 基准边界框（如分数线）
+            bbox_b: 目标边界框（如分子或分母）
+            
+        Returns:
+            覆盖率 (0.0 - 1.0)
+        """
+        overlap_left = max(bbox_a.x, bbox_b.x)
+        overlap_right = min(bbox_a.x2, bbox_b.x2)
+        
+        if overlap_right <= overlap_left:
+            return 0.0
+        
+        overlap_width = overlap_right - overlap_left
+        target_width = bbox_b.width
+        
+        return overlap_width / max(target_width, 1)
+    
+    def _check_superscript(self, bbox_a: BoundingBox, bbox_b: BoundingBox,
+                           dx: float, dy: float, norm_dx: float, norm_dy: float,
+                           size_ratio: float, height_ratio: float,
+                           norm_h_gap: float, max_h_distance: float) -> bool:
+        """
+        检查是否为上标关系
+        
+        上标特征：
+        1. 目标符号位于基准符号的右上方
+        2. 目标符号的底部在基准符号中线以上或附近
+        3. 目标符号通常较小（但不是必须的，如 x^2 中的 2 可能较大）
+        4. 水平距离不能太远
+        
+        Args:
+            bbox_a: 基准符号边界框
+            bbox_b: 目标符号边界框
+            dx, dy: 中心点偏移
+            norm_dx, norm_dy: 归一化偏移
+            size_ratio: 尺寸比例
+            height_ratio: 高度比例
+            norm_h_gap: 归一化水平间隙
+            max_h_distance: 最大水平距离
+            
+        Returns:
+            是否为上标
+        """
+        # 必须在右侧（中心点或左边缘在基准符号右边缘附近或之后）
+        if dx <= 0 and bbox_b.x < bbox_a.x2 - bbox_a.width * 0.2:
+            return False
+        
+        # 水平距离限制
+        if norm_h_gap > max_h_distance:
+            return False
+        
+        # 检查垂直位置：目标符号的底部应该在基准符号中线以上或附近
+        base_midline = bbox_a.center_y
+        target_bottom = bbox_b.y2
+        
+        # 上标的底部应该在基准符号的上半部分（或中线附近）
+        vertical_position = (target_bottom - bbox_a.y) / max(bbox_a.height, 1)
+        
+        # 条件1：目标符号底部在基准符号上半部分（传统上标）
+        is_traditional_superscript = (
+            vertical_position < 0.7 and  # 底部在上70%区域
+            dy < 0  # 中心在上方
+        )
+        
+        # 条件2：目标符号明显偏小且在右上方向偏移（允许稍大的上标）
+        is_small_superscript = (
+            dy < -self.config.superscript_y_threshold * bbox_a.height and
+            size_ratio < self.config.script_size_ratio and
+            dx > 0
+        )
+        
+        # 条件3：目标符号顶部明显高于基准符号（即使大小接近）
+        is_elevated = (
+            bbox_b.y < bbox_a.y - bbox_a.height * 0.1 and
+            dx > 0 and
+            norm_h_gap < max_h_distance * 0.5  # 距离较近
+        )
+        
+        return is_traditional_superscript or is_small_superscript or is_elevated
+    
+    def _check_subscript(self, bbox_a: BoundingBox, bbox_b: BoundingBox,
+                         dx: float, dy: float, norm_dx: float, norm_dy: float,
+                         size_ratio: float, height_ratio: float,
+                         norm_h_gap: float, max_h_distance: float) -> bool:
+        """
+        检查是否为下标关系
+        
+        下标特征：
+        1. 目标符号位于基准符号的右下方
+        2. 目标符号的顶部在基准符号中线以下或附近
+        3. 目标符号通常较小（但不是必须的）
+        4. 水平距离不能太远
+        
+        Args:
+            bbox_a: 基准符号边界框
+            bbox_b: 目标符号边界框
+            dx, dy: 中心点偏移
+            norm_dx, norm_dy: 归一化偏移
+            size_ratio: 尺寸比例
+            height_ratio: 高度比例
+            norm_h_gap: 归一化水平间隙
+            max_h_distance: 最大水平距离
+            
+        Returns:
+            是否为下标
+        """
+        # 必须在右侧
+        if dx <= 0 and bbox_b.x < bbox_a.x2 - bbox_a.width * 0.2:
+            return False
+        
+        # 水平距离限制
+        if norm_h_gap > max_h_distance:
+            return False
+        
+        # 检查垂直位置：目标符号的顶部应该在基准符号中线以下或附近
+        base_midline = bbox_a.center_y
+        target_top = bbox_b.y
+        
+        # 下标的顶部应该在基准符号的下半部分
+        vertical_position = (target_top - bbox_a.y) / max(bbox_a.height, 1)
+        
+        # 条件1：目标符号顶部在基准符号下半部分（传统下标）
+        is_traditional_subscript = (
+            vertical_position > 0.3 and  # 顶部在下70%区域
+            dy > 0  # 中心在下方
+        )
+        
+        # 条件2：目标符号明显偏小且在右下方向偏移
+        is_small_subscript = (
+            dy > self.config.subscript_y_threshold * bbox_a.height and
+            size_ratio < self.config.script_size_ratio and
+            dx > 0
+        )
+        
+        # 条件3：目标符号底部明显低于基准符号
+        is_lowered = (
+            bbox_b.y2 > bbox_a.y2 + bbox_a.height * 0.1 and
+            dx > 0 and
+            norm_h_gap < max_h_distance * 0.5
+        )
+        
+        return is_traditional_subscript or is_small_subscript or is_lowered
     
     def _process_special_structures(self, symbols: List[Symbol],
                                     relations: Dict) -> Tuple[List[Symbol], List[Dict]]:
@@ -242,22 +410,49 @@ class StructureAnalyzer:
                 numerator = []
                 denominator = []
                 
+                fraction_bbox = symbol.bbox
+                
                 for j, other in enumerate(symbols):
                     if i == j:
                         continue
                     
+                    # 首先检查已计算的关系
                     rel = relations.get((i, j))
                     if rel == SpatialRelation.NUMERATOR:
                         numerator.append(j)
                     elif rel == SpatialRelation.DENOMINATOR:
                         denominator.append(j)
+                    else:
+                        # 如果关系未知，使用直接的几何判断
+                        other_bbox = other.bbox
+                        
+                        # 检查水平覆盖
+                        h_coverage = self._compute_horizontal_coverage(fraction_bbox, other_bbox)
+                        
+                        if h_coverage > 0.2:  # 至少20%水平覆盖
+                            # 使用目标符号的高度作为参考（因为分数线高度太小）
+                            max_distance = max(other_bbox.height * 2, 50)
+                            
+                            # 检查垂直位置
+                            if other_bbox.center_y < fraction_bbox.center_y:
+                                # 在分数线上方
+                                vertical_dist = fraction_bbox.y - other_bbox.y2
+                                if vertical_dist < max_distance:
+                                    numerator.append(j)
+                            elif other_bbox.center_y > fraction_bbox.center_y:
+                                # 在分数线下方
+                                vertical_dist = other_bbox.y - fraction_bbox.y2
+                                if vertical_dist < max_distance:
+                                    denominator.append(j)
                 
-                groups.append({
-                    'type': 'fraction',
-                    'line_idx': i,
-                    'numerator_indices': numerator,
-                    'denominator_indices': denominator
-                })
+                # 只有当有分子或分母时才创建分数组
+                if numerator or denominator:
+                    groups.append({
+                        'type': 'fraction',
+                        'line_idx': i,
+                        'numerator_indices': numerator,
+                        'denominator_indices': denominator
+                    })
         
         return groups
     
@@ -364,10 +559,20 @@ class StructureAnalyzer:
         # 标记已处理的符号
         processed = set()
         
+        # 首先处理分组结构（分数、根号等），收集组内符号
+        fraction_line_indices = set()
+        fraction_component_indices = set()  # 分数的分子和分母
+        
         # 处理分组结构
         group_nodes = {}
         for group in groups:
-            node = self._create_group_node(group, symbols, relations)
+            if group['type'] == 'fraction':
+                line_idx = group.get('line_idx')
+                fraction_line_indices.add(line_idx)
+                fraction_component_indices.update(group.get('numerator_indices', []))
+                fraction_component_indices.update(group.get('denominator_indices', []))
+            
+            node = self._create_group_node(group, symbols, relations, processed)
             group_nodes[group.get('line_idx') or group.get('sqrt_idx') or 
                        group.get('operator_idx')] = node
             
@@ -378,6 +583,18 @@ class StructureAnalyzer:
                 if key in group:
                     processed.update(group[key])
         
+        # 识别上标/下标符号（排除分数组件和分数线）
+        script_symbols = set()
+        for (i, j), rel in relations.items():
+            # 跳过分数线的关系
+            if i in fraction_line_indices or j in fraction_line_indices:
+                continue
+            # 跳过分数组件之间的关系
+            if i in fraction_component_indices or j in fraction_component_indices:
+                continue
+            if rel in [SpatialRelation.SUPERSCRIPT, SpatialRelation.SUBSCRIPT]:
+                script_symbols.add(j)
+        
         # 构建主表达式
         root = SyntaxNode(NodeType.EXPRESSION.value)
         
@@ -387,11 +604,15 @@ class StructureAnalyzer:
             if idx in processed:
                 continue
             
+            # 如果符号是上标/下标，跳过（它会在处理基础符号时被处理）
+            if idx in script_symbols:
+                continue
+            
             if idx in group_nodes:
                 root.add_child(group_nodes[idx])
             else:
-                # 创建符号节点
-                node = self._create_symbol_node(symbol, idx, symbols, relations)
+                # 创建符号节点，传递 processed 集合
+                node = self._create_symbol_node(symbol, idx, symbols, relations, processed)
                 root.add_child(node)
             
             processed.add(idx)
@@ -399,7 +620,7 @@ class StructureAnalyzer:
         return root
     
     def _create_group_node(self, group: Dict, symbols: List[Symbol],
-                           relations: Dict) -> SyntaxNode:
+                           relations: Dict, processed: set = None) -> SyntaxNode:
         """
         创建分组节点（分数、根号等）
         
@@ -407,36 +628,65 @@ class StructureAnalyzer:
             group: 分组信息
             symbols: 符号列表
             relations: 空间关系字典
+            processed: 已处理符号索引集合
             
         Returns:
             语法树节点
         """
+        if processed is None:
+            processed = set()
+            
         group_type = group['type']
         
         if group_type == 'fraction':
             node = SyntaxNode(NodeType.FRACTION.value)
             
+            # 按位置排序分子和分母中的符号
+            num_indices = sorted(group['numerator_indices'], 
+                               key=lambda i: symbols[i].bbox.x)
+            den_indices = sorted(group['denominator_indices'],
+                               key=lambda i: symbols[i].bbox.x)
+            
+            # 将分数组件（分子和分母）标记为已处理
+            # 注意：分数线索引不添加到 processed，它需要在遍历时通过 group_nodes 处理
+            # 但我们需要确保 _create_symbol_node 不会将分数组件误认为上下标
+            line_idx = group.get('line_idx')
+            all_fraction_indices = set(num_indices + den_indices)
+            if line_idx is not None:
+                all_fraction_indices.add(line_idx)
+            
+            # 创建一个本地的 processed 副本用于阻止分数内部的上下标识别
+            local_processed = processed.copy()
+            local_processed.update(all_fraction_indices)
+            # 将分子和分母标记为已处理（分数线不标记，它需要通过 group_nodes 添加）
+            for idx in num_indices + den_indices:
+                processed.add(idx)
+            
             # 分子
             num_node = SyntaxNode(NodeType.EXPRESSION.value)
-            for idx in group['numerator_indices']:
-                child = self._create_symbol_node(symbols[idx], idx, symbols, relations)
+            for idx in num_indices:
+                child = self._create_symbol_node(symbols[idx], idx, symbols, relations, local_processed)
                 num_node.add_child(child)
             node.add_child(num_node)
             
             # 分母
             den_node = SyntaxNode(NodeType.EXPRESSION.value)
-            for idx in group['denominator_indices']:
-                child = self._create_symbol_node(symbols[idx], idx, symbols, relations)
+            for idx in den_indices:
+                child = self._create_symbol_node(symbols[idx], idx, symbols, relations, local_processed)
                 den_node.add_child(child)
             node.add_child(den_node)
             
         elif group_type == 'sqrt':
             node = SyntaxNode(NodeType.SQRT.value)
             
+            # 按位置排序内部符号
+            inner_indices = sorted(group['inner_indices'],
+                                 key=lambda i: symbols[i].bbox.x)
+            
             # 内部表达式
             inner_node = SyntaxNode(NodeType.EXPRESSION.value)
-            for idx in group['inner_indices']:
-                child = self._create_symbol_node(symbols[idx], idx, symbols, relations)
+            for idx in inner_indices:
+                child = self._create_symbol_node(symbols[idx], idx, symbols, relations, processed)
                 inner_node.add_child(child)
             node.add_child(inner_node)
             
@@ -446,22 +696,28 @@ class StructureAnalyzer:
             
             # 下限
             lower_node = SyntaxNode(NodeType.EXPRESSION.value)
-            for idx in group.get('lower_limit_indices', []):
-                child = self._create_symbol_node(symbols[idx], idx, symbols, relations)
+            lower_indices = sorted(group.get('lower_limit_indices', []),
+                                 key=lambda i: symbols[i].bbox.x)
+            for idx in lower_indices:
+                child = self._create_symbol_node(symbols[idx], idx, symbols, relations, processed)
                 lower_node.add_child(child)
             node.add_child(lower_node)
             
             # 上限
             upper_node = SyntaxNode(NodeType.EXPRESSION.value)
-            for idx in group.get('upper_limit_indices', []):
-                child = self._create_symbol_node(symbols[idx], idx, symbols, relations)
+            upper_indices = sorted(group.get('upper_limit_indices', []),
+                                 key=lambda i: symbols[i].bbox.x)
+            for idx in upper_indices:
+                child = self._create_symbol_node(symbols[idx], idx, symbols, relations, processed)
                 upper_node.add_child(child)
             node.add_child(upper_node)
             
             # 被操作数
             operand_node = SyntaxNode(NodeType.EXPRESSION.value)
-            for idx in group.get('operand_indices', []):
-                child = self._create_symbol_node(symbols[idx], idx, symbols, relations)
+            operand_indices = sorted(group.get('operand_indices', []),
+                                   key=lambda i: symbols[i].bbox.x)
+            for idx in operand_indices:
+                child = self._create_symbol_node(symbols[idx], idx, symbols, relations, processed)
                 operand_node.add_child(child)
             node.add_child(operand_node)
         else:
@@ -471,7 +727,8 @@ class StructureAnalyzer:
     
     def _create_symbol_node(self, symbol: Symbol, idx: int,
                             symbols: List[Symbol],
-                            relations: Dict) -> SyntaxNode:
+                            relations: Dict,
+                            processed: set = None) -> SyntaxNode:
         """
         创建符号节点
         
@@ -480,10 +737,14 @@ class StructureAnalyzer:
             idx: 符号索引
             symbols: 所有符号
             relations: 空间关系字典
+            processed: 已处理的符号索引集合（用于避免重复处理）
             
         Returns:
             语法树节点
         """
+        if processed is None:
+            processed = set()
+        
         # 检查是否有上标或下标
         has_superscript = False
         has_subscript = False
@@ -491,13 +752,19 @@ class StructureAnalyzer:
         subscript_indices = []
         
         for (i, j), rel in relations.items():
-            if i == idx:
+            if i == idx and j not in processed:
                 if rel == SpatialRelation.SUPERSCRIPT:
                     has_superscript = True
                     superscript_indices.append(j)
                 elif rel == SpatialRelation.SUBSCRIPT:
                     has_subscript = True
                     subscript_indices.append(j)
+        
+        # 按位置排序上标和下标
+        if superscript_indices:
+            superscript_indices.sort(key=lambda j: symbols[j].bbox.x)
+        if subscript_indices:
+            subscript_indices.sort(key=lambda j: symbols[j].bbox.x)
         
         if has_superscript or has_subscript:
             # 创建带上下标的节点
@@ -512,11 +779,16 @@ class StructureAnalyzer:
             base_node = SyntaxNode(NodeType.SYMBOL.value, value=symbol.label)
             node.add_child(base_node)
             
+            # 标记上下标符号为已处理
+            for j in superscript_indices + subscript_indices:
+                processed.add(j)
+            
             # 下标
             if has_subscript:
                 sub_node = SyntaxNode(NodeType.EXPRESSION.value)
                 for j in subscript_indices:
-                    child = SyntaxNode(NodeType.SYMBOL.value, value=symbols[j].label)
+                    # 递归处理，以支持嵌套结构
+                    child = self._create_symbol_node(symbols[j], j, symbols, relations, processed)
                     sub_node.add_child(child)
                 node.add_child(sub_node)
             
@@ -524,7 +796,8 @@ class StructureAnalyzer:
             if has_superscript:
                 sup_node = SyntaxNode(NodeType.EXPRESSION.value)
                 for j in superscript_indices:
-                    child = SyntaxNode(NodeType.SYMBOL.value, value=symbols[j].label)
+                    # 递归处理，以支持嵌套结构
+                    child = self._create_symbol_node(symbols[j], j, symbols, relations, processed)
                     sup_node.add_child(child)
                 node.add_child(sup_node)
             
