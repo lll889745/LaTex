@@ -8,26 +8,36 @@ import sys
 
 block_cipher = None
 
-# 获取当前目录
-CURR_DIR = os.path.dirname(os.path.abspath(SPEC))
+# 获取项目根目录（build_config的上级目录）
+SPEC_DIR = os.path.dirname(os.path.abspath(SPEC))
+PROJECT_ROOT = os.path.dirname(SPEC_DIR)
 
 a = Analysis(
-    ['gui.py'],
-    pathex=[CURR_DIR],
+    [os.path.join(PROJECT_ROOT, 'gui.py')],
+    pathex=[PROJECT_ROOT],
     binaries=[],
     datas=[
-        # 包含模型文件
-        ('models/model_2025_12_19_19_05.pkl', 'models'),
-        # 包含源代码模块
-        ('src', 'src'),
+        # 包含模型文件（所有模型）
+        (os.path.join(PROJECT_ROOT, 'models'), 'models'),
+        # 包含源代码模块（预处理、分割、识别、结构分析、语义处理等）
+        (os.path.join(PROJECT_ROOT, 'src'), 'src'),
     ],
     hiddenimports=[
+        # sklearn 相关
         'sklearn',
         'sklearn.svm',
+        'sklearn.svm._classes',
         'sklearn.ensemble',
+        'sklearn.ensemble._forest',
+        'sklearn.ensemble._gb',
         'sklearn.neighbors',
+        'sklearn.neighbors._classification',
+        'sklearn.neighbors._regression',
         'sklearn.preprocessing',
+        'sklearn.preprocessing._label',
+        'sklearn.preprocessing._encoders',
         'sklearn.model_selection',
+        'sklearn.model_selection._split',
         'sklearn.metrics',
         'sklearn.utils._cython_blas',
         'sklearn.utils._typedefs',
@@ -35,19 +45,60 @@ a = Analysis(
         'sklearn.utils._sorting',
         'sklearn.utils._vector_sentinel',
         'sklearn.neighbors._partition_nodes',
+        'sklearn.tree',
+        'sklearn.tree._utils',
+        # OpenCV
         'cv2',
+        # numpy/scipy
         'numpy',
+        'numpy.core._methods',
+        'numpy.lib.format',
+        'scipy',
+        'scipy.sparse',
+        'scipy.sparse.csgraph',
+        'scipy.sparse.linalg',
+        'scipy.ndimage',
+        'scipy.special',
+        # sympy 语义模块
         'sympy',
         'sympy.parsing',
         'sympy.parsing.latex',
+        'sympy.parsing.latex._parse_latex_antlr',
+        'sympy.core',
+        'sympy.core.sympify',
+        'sympy.solvers',
+        'sympy.calculus',
+        'sympy.integrals',
+        'sympy.series',
+        'sympy.simplify',
+        'sympy.matrices',
+        # antlr4 (sympy.parsing.latex 依赖)
+        'antlr4',
+        'antlr4.error',
+        'antlr4.error.ErrorListener',
+        # PIL/Pillow
         'PIL',
         'PIL.Image',
         'PIL.ImageTk',
+        'PIL.ImageDraw',
+        'PIL.ImageFont',
         # matplotlib 相关
         'matplotlib',
         'matplotlib.pyplot',
         'matplotlib.backends.backend_agg',
         'matplotlib.figure',
+        'matplotlib.font_manager',
+        # joblib (模型加载)
+        'joblib',
+        # 项目源代码模块
+        'src',
+        'src.config',
+        'src.preprocessing',
+        'src.segmentation',
+        'src.recognition',
+        'src.structure_analysis',
+        'src.semantic',
+        'src.utils',
     ],
     hookspath=[],
     hooksconfig={},
